@@ -6,7 +6,7 @@ from transformers.optimization import AdamW
 import os
 import pandas as pd
 import numpy as np
-from sklearn.metrics import mean_squared_error, explained_variance_score, mean_absolute_error, r2_score
+from sklearn.metrics import precision_recall_fscore_support
 from tqdm import tqdm
 from time import sleep
 import argparse
@@ -43,9 +43,10 @@ def train_classification_model(model, tokenizer, dim, train_dataloader,
                 # Forward pass
                 with torch.cuda.amp.autocast():
                     # outputs = model(**inputs)
+                    linear_layer = nn.Linear(in_feature=768, out_features=768, bias=True, device=device)
                     self_attention_layer = nn.MultiheadAttention(embed_dim=768, num_heads=12)
                     attention_output, _ = self_attention_layer(last_hidden_states, last_hidden_states, last_hidden_states)
-                    linear_regression_layer = nn.Linear(768, 1)
+                    linear_regression_layer = nn.Linear(768, 11)
                     flattened_output = attention_output.mean(dim=1)
                     logits = linear_regression_layer(flattened_output)
                     # Compute the loss
@@ -75,15 +76,12 @@ def train_classification_model(model, tokenizer, dim, train_dataloader,
                     loss = criterion(logits, targets)
                     logits = logits.detach().cpu().tolist()
                     targets = targets.detach().cpu().tolist()
+                    
+                    p, r, f1, _ = precision_recall_fscore_support(targets, logits, average='macro')
 
-                    mse = mean_squared_error(targets, logits)
-                    mae = mean_absolute_error(targets, logits)
-                    evs = explained_variance_score(targets, logits)
-                    r2 = r2_score(targets, logits)
-
-                tepoch.set_postfix(dim=dim, val_loss=loss.item(), mse=mse, mae=mae, evs=evs, r2=r2)
+                tepoch.set_postfix(dim=dim, val_loss=loss.item(), precision=p, recall=r, f1=f1)
 
         # Clear CUDA Cache
-        del mse, mae, evs, r2
+        del p, r, f1
         torch.cuda.empty_cache()
         return model
